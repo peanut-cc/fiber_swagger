@@ -284,7 +284,7 @@ func (s *Swagger) marshalYAML() ([]byte, error) {
 }
 
 func (s *Swagger) WriteToYaml() error {
-	err := noDirCreate(s.OpenAPIYamlFile)
+	err := ensureDirectory(s.OpenAPIYamlFile)
 	if err != nil {
 		return err
 	}

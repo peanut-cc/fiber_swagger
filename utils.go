@@ -6,7 +6,7 @@ import (
 	"reflect"
 )
 
-func noDirCreate(filePath string) error {
+func ensureDirectory(filePath string) error {
 	fileAbsDir, err := filepath.Abs(filepath.Dir(filePath))
 	if err != nil {
 		return err
