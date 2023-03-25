@@ -1,4 +1,4 @@
-package fiberx
+package fiber_swagger
 
 import (
 	"fmt"

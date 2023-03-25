@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/peanut-cc/fiberx"
+	"github.com/peanut-cc/fiber_swagger"
 )
 
 type User struct {
@@ -32,15 +32,15 @@ func QueryUsers(c *fiber.Ctx) error {
 
 func main() {
 	app := fiber.New()
-	r := fiberx.NewSwagger()
+	swag := fiber_swagger.NewSwagger()
 
 	api := app.Group("api")
 
 	user := api.Group("user")
 
 	user.Get("/", QueryUsers).Name("查询用户")
-	r.Bind("查询用户", nil, &QueryUsersResult{})
+	swag.Bind("查询用户", nil, &QueryUsersResult{})
 
-	r.Generate(app)
+	swag.Generate(app)
 	//app.Listen(":3000")
 }
