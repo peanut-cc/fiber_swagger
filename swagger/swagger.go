@@ -77,9 +77,6 @@ func (s *Swagger) Generate(app *fiber.App) {
 		reqRep := s.load(router.Name)
 		req := reqRep.Request
 		rep := reqRep.Response
-		fmt.Printf("path is %v\n", router.Path)
-		fmt.Printf("req is %v\n", req)
-		fmt.Printf("rep is %v\n", rep)
 		s.addComponent(req)
 		s.addComponent(rep)
 	}
@@ -151,6 +148,15 @@ func (s *Swagger) getBodyFromComponent(component interface{}) *openapi3.Schema {
 			if err != nil {
 				panic(err)
 			}
+
+			_, err = tags.Get(constants.EMBED)
+			if err != nil {
+				embedSchema := s.getBodyFromComponent(value.Interface())
+				for key, embedProperty := range embedSchema.Properties {
+					schema.Properties[key] = embedProperty
+				}
+			}
+
 			tag, err := tags.Get(constants.JSON)
 			if err != nil {
 				panic(err)
@@ -162,13 +168,19 @@ func (s *Swagger) getBodyFromComponent(component interface{}) *openapi3.Schema {
 			if value.Kind() == reflect.Slice {
 				valueElementType := value.Type().Elem()
 				result := isBasicType(valueElementType)
-				if result {
-					fieldSchema = s.getSchemaFromBaseType(reflect.New(valueElementType).Elem().Interface())
-					schema.Properties[tag.Name] = openapi3.NewSchemaRef("", fieldSchema)
-				} else {
+				if !result {
 					s.handleNestedStructSlice(schema, tag.Name, field.Type.Elem().Name())
+					s.getSchemaFromComponent(value.Interface())
 				}
 			}
+			if value.Kind() == reflect.Struct {
+				v := value.Type().Elem()
+				result := isBasicType(v)
+				if !result {
+					s.handleNestedStruct(schema, tag.Name, value.Interface())
+				}
+			}
+
 			descriptionTag, err := tags.Get(constants.DESCRIPTION)
 			if err == nil {
 				fieldSchema.Description = descriptionTag.String()
@@ -177,13 +189,37 @@ func (s *Swagger) getBodyFromComponent(component interface{}) *openapi3.Schema {
 		}
 
 	} else if type_.Kind() == reflect.Slice && type_.Elem().Kind() == reflect.Struct {
-
-		fmt.Printf("slice is %v\n", value_)
+		name := type_.Elem().Name()
+		m := reflect.New(type_.Elem()).Elem().Interface()
+		s.handleStructSlice(name, m)
 	} else {
 		// 处理普通字段
 		schema = s.getSchemaFromBaseType(component)
 	}
 	return schema
+}
+
+func (s *Swagger) handleStructSlice(name string, model interface{}) {
+	result := s.getBodyFromComponent(model)
+	openaiSchemaRef := &openapi3.SchemaRef{
+		Value: openapi3.NewAllOfSchema(),
+	}
+	openaiSchemaRef.Value = result
+	openaiSchemaRef.Value.Title = name
+	s.Schemas[name] = openaiSchemaRef
+}
+
+func (s *Swagger) handleNestedStruct(schema *openapi3.Schema, name string, model interface{}) {
+	result := s.getBodyFromComponent(model)
+	openaiSchemaRef := &openapi3.SchemaRef{
+		Value: openapi3.NewSchema(),
+	}
+	openaiSchemaRef.Value = result
+	openaiSchemaRef.Value.Title = name
+	s.Schemas[name] = openaiSchemaRef
+	ref := fmt.Sprintf("#/components/schemas/%s", name)
+	schemaRef := &openapi3.SchemaRef{Ref: ref}
+	schema.Properties[name] = schemaRef
 }
 
 func (s *Swagger) handleNestedStructSlice(schema *openapi3.Schema, name, fieldName string) {
@@ -217,7 +253,6 @@ func (s *Swagger) getSchemaFromBaseType(field interface{}) *openapi3.Schema {
 		schema = openapi3.NewInt64Schema()
 		schema.Min = &m
 	case string, *string:
-		fmt.Println("is string")
 		schema = openapi3.NewStringSchema()
 	case time.Time, *time.Time:
 		schema = openapi3.NewDateTimeSchema()
