@@ -99,13 +99,13 @@ func (s *Swagger) buildComponents() {
 		if component == nil {
 			continue
 		}
-		name, schema := s.getSchemaFromComponent(component)
-		s.Schemas[name] = schema
+		name, openApiSchemaRef := s.getNameAndOpenApiSchemaRefFromComponent(component)
+		s.Schemas[name] = openApiSchemaRef
 	}
 	s.OpenAPI.Components.Schemas = s.Schemas
 }
 
-func (s *Swagger) getSchemaFromComponent(component interface{}) (name string, openApiSchemaRef *openapi3.SchemaRef) {
+func (s *Swagger) getNameAndOpenApiSchemaRefFromComponent(component interface{}) (name string, openApiSchemaRef *openapi3.SchemaRef) {
 	if component == nil {
 		return "", nil
 	}
@@ -118,11 +118,11 @@ func (s *Swagger) getSchemaFromComponent(component interface{}) (name string, op
 		name = reflect.TypeOf(component).Name()
 	}
 
-	openApiSchemaRef.Value = s.getBodyFromComponent(component)
+	openApiSchemaRef.Value = s.getSchemaFromComponent(component)
 	return name, openApiSchemaRef
 }
 
-func (s *Swagger) getBodyFromComponent(component interface{}) *openapi3.Schema {
+func (s *Swagger) getSchemaFromComponent(component interface{}) *openapi3.Schema {
 	schema := openapi3.NewObjectSchema()
 	if component == nil {
 		return schema
@@ -165,6 +165,7 @@ func (s *Swagger) getBodyFromComponent(component interface{}) *openapi3.Schema {
 				result := isBasicType(valueElementType)
 				if !result {
 					s.handleNestedStructSlice(schema, tag.Name, field.Type.Elem().Name())
+					//s.getNameAndOpenApiSchemaRefFromComponent(value.Interface())
 					s.getSchemaFromComponent(value.Interface())
 				}
 			}
@@ -194,7 +195,7 @@ func (s *Swagger) getBodyFromComponent(component interface{}) *openapi3.Schema {
 }
 
 func (s *Swagger) handleStructSlice(name string, model interface{}) {
-	result := s.getBodyFromComponent(model)
+	result := s.getSchemaFromComponent(model)
 	openaiSchemaRef := &openapi3.SchemaRef{
 		Value: openapi3.NewAllOfSchema(),
 	}
@@ -204,7 +205,7 @@ func (s *Swagger) handleStructSlice(name string, model interface{}) {
 }
 
 func (s *Swagger) handleNestedStruct(schema *openapi3.Schema, name string, model interface{}) {
-	result := s.getBodyFromComponent(model)
+	result := s.getSchemaFromComponent(model)
 	openaiSchemaRef := &openapi3.SchemaRef{
 		Value: openapi3.NewSchema(),
 	}
