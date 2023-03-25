@@ -1,4 +1,4 @@
-package constants
+package fiberx
 
 const (
 	DEFAULT     = "default"

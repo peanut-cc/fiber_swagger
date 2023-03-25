@@ -2,21 +2,8 @@ package main
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/peanut-cc/fiberx/swagger"
+	"github.com/peanut-cc/fiberx"
 )
-
-//type QueryNamesArgs struct {
-//	Id string `json:"id" description:"id"`
-//}
-//
-//type QueryNameResult struct {
-//	Names []string `json:"names" description:"名字列表"`
-//}
-//
-//func QueryName(c *fiber.Ctx) error {
-//	names := &QueryNameResult{Names: []string{"Golang", "Rust"}}
-//	return Success(c, names)
-//}
 
 type User struct {
 	Name string `json:"name"`
@@ -45,17 +32,15 @@ func QueryUsers(c *fiber.Ctx) error {
 
 func main() {
 	app := fiber.New()
-	r := swagger.NewSwagger()
+	r := fiberx.NewSwagger()
 
 	api := app.Group("api")
 
 	user := api.Group("user")
 
-	//user.Get("/", QueryName).Name("查询用户")
-	//r.Bind("查询用户", &QueryNamesArgs{}, &QueryNameResult{})
 	user.Get("/", QueryUsers).Name("查询用户")
 	r.Bind("查询用户", nil, &QueryUsersResult{})
 
 	r.Generate(app)
-	app.Listen(":3000")
+	//app.Listen(":3000")
 }

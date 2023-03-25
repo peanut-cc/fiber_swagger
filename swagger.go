@@ -1,4 +1,4 @@
-package swagger
+package fiberx
 
 import (
 	"fmt"
@@ -7,7 +7,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/invopop/yaml"
-	"github.com/peanut-cc/fiberx/constants"
 	"io"
 	"mime/multipart"
 	"os"
@@ -15,12 +14,6 @@ import (
 	"sync"
 	"time"
 )
-
-type HttpRequestResponse struct {
-	URLName  string
-	Request  interface{}
-	Response interface{}
-}
 
 type Swagger struct {
 	routersMap      sync.Map
@@ -44,7 +37,6 @@ func NewSwagger() *Swagger {
 		Security:   openapi3.SecurityRequirements{map[string][]string{"http": {}}},
 	}
 	return &Swagger{
-		routersMap:      sync.Map{},
 		Title:           "",
 		Description:     "",
 		Version:         "",
@@ -54,6 +46,12 @@ func NewSwagger() *Swagger {
 		Schemas:         make(map[string]*openapi3.SchemaRef),
 		OpenAPIYamlFile: "./docs/openapi.yaml",
 	}
+}
+
+type HttpRequestResponse struct {
+	URLName  string
+	Request  interface{}
+	Response interface{}
 }
 
 func (s *Swagger) Bind(name string, request interface{}, response interface{}) {
@@ -81,9 +79,10 @@ func (s *Swagger) Generate(app *fiber.App) {
 		s.addComponent(rep)
 	}
 	s.buildComponents()
-	fmt.Printf("build result:%v\n", s.OpenAPI.Components.Schemas)
 	err := s.WriteToYaml()
-	fmt.Printf("err is %v\n", err)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (s *Swagger) load(name string) (httpResRep *HttpRequestResponse) {
@@ -149,20 +148,16 @@ func (s *Swagger) getBodyFromComponent(component interface{}) *openapi3.Schema {
 				panic(err)
 			}
 
-			_, err = tags.Get(constants.EMBED)
-			if err != nil {
-				embedSchema := s.getBodyFromComponent(value.Interface())
-				for key, embedProperty := range embedSchema.Properties {
-					schema.Properties[key] = embedProperty
-				}
-			}
-
-			tag, err := tags.Get(constants.JSON)
+			tag, err := tags.Get(JSON)
 			if err != nil {
 				panic(err)
 			} else {
-				fieldSchema = s.getSchemaFromBaseType(value.Interface())
-				schema.Properties[tag.Name] = openapi3.NewSchemaRef("", fieldSchema)
+				result := isBasicType(value.Type())
+				if result {
+					fieldSchema = s.getSchemaFromBaseType(value.Interface())
+					schema.Properties[tag.Name] = openapi3.NewSchemaRef("", fieldSchema)
+				}
+
 			}
 
 			if value.Kind() == reflect.Slice {
@@ -181,7 +176,7 @@ func (s *Swagger) getBodyFromComponent(component interface{}) *openapi3.Schema {
 				}
 			}
 
-			descriptionTag, err := tags.Get(constants.DESCRIPTION)
+			descriptionTag, err := tags.Get(DESCRIPTION)
 			if err == nil {
 				fieldSchema.Description = descriptionTag.String()
 			}
@@ -193,7 +188,6 @@ func (s *Swagger) getBodyFromComponent(component interface{}) *openapi3.Schema {
 		m := reflect.New(type_.Elem()).Elem().Interface()
 		s.handleStructSlice(name, m)
 	} else {
-		// 处理普通字段
 		schema = s.getSchemaFromBaseType(component)
 	}
 	return schema
