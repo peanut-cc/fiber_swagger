@@ -1,6 +1,8 @@
 package fiber_swagger
 
 import (
+	"fmt"
+	"github.com/getkin/kin-openapi/openapi3"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -31,4 +33,10 @@ func isBasicType(t reflect.Type) bool {
 	default:
 		return false
 	}
+}
+
+func getSchemaRef(name string) *openapi3.SchemaRef {
+	ref := fmt.Sprintf("#/components/schemas/%s", name)
+	schemaRef := &openapi3.SchemaRef{Ref: ref}
+	return schemaRef
 }

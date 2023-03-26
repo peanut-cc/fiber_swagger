@@ -1,19 +1,11 @@
 package fiber_swagger
 
 import (
-	"fmt"
-	"github.com/fatih/structtag"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/invopop/yaml"
 	"github.com/peanut-cc/fiber_swagger/router"
-	"io"
 	"mime/multipart"
-	"net/http"
-	"os"
-	"reflect"
-	"strings"
 	"sync"
 	"time"
 )
@@ -80,8 +72,7 @@ func (s *Swagger) Generate(app *fiber.App) {
 		reqRep := s.load(route.Name)
 		req := reqRep.Request
 		rep := reqRep.Response
-		s.addComponent(req)
-		s.addComponent(rep)
+		s.addComponents(req, rep)
 		s.addPath(route, req, rep)
 	}
 	s.buildComponents()
@@ -95,157 +86,6 @@ func (s *Swagger) Generate(app *fiber.App) {
 func (s *Swagger) load(name string) (httpResRep *HttpRequestResponse) {
 	result, _ := s.routersMap.Load(name)
 	return result.(*HttpRequestResponse)
-}
-
-func (s *Swagger) addComponent(component interface{}) {
-	s.Components = append(s.Components, component)
-}
-
-func (s *Swagger) buildComponents() {
-	for _, component := range s.Components {
-		if component == nil {
-			continue
-		}
-		name, openApiSchemaRef := s.getNameAndOpenApiSchemaRefFromComponent(component)
-		s.Schemas[name] = openApiSchemaRef
-	}
-	s.OpenAPI.Components.Schemas = s.Schemas
-}
-
-func (s *Swagger) addPath(route fiber.Route, request interface{}, response interface{}) {
-	fmt.Printf("path is %v\n", route.Path)
-	fmt.Printf("method is %v\n", route.Method)
-	fmt.Printf("name is %v\n", route.Name)
-	items := strings.Split(route.Path, "/")
-	fmt.Printf("items is %v\n", items[3])
-	tags := []string{items[3]}
-	rt := router.New(route.Path, route.Method, route.Name, tags, router.Request(request), router.Response(response))
-	if s.Paths[route.Path] == nil {
-		s.Paths[route.Path] = make(map[string]*router.Router)
-	}
-	s.Paths[route.Path][route.Method] = rt
-}
-
-func (s *Swagger) getNameAndOpenApiSchemaRefFromComponent(component interface{}) (name string, openApiSchemaRef *openapi3.SchemaRef) {
-	if component == nil {
-		return "", nil
-	}
-	openApiSchemaRef = &openapi3.SchemaRef{
-		Value: openapi3.NewAllOfSchema(),
-	}
-	if reflect.TypeOf(component).Kind() == reflect.Ptr {
-		name = reflect.TypeOf(component).Elem().Name()
-	} else {
-		name = reflect.TypeOf(component).Name()
-	}
-
-	openApiSchemaRef.Value = s.getSchemaFromComponent(component)
-	openApiSchemaRef.Value.Title = name
-	return name, openApiSchemaRef
-}
-
-func (s *Swagger) getSchemaFromComponent(component interface{}) *openapi3.Schema {
-	schema := openapi3.NewObjectSchema()
-	if component == nil {
-		return schema
-	}
-	type_ := reflect.TypeOf(component)
-	value_ := reflect.ValueOf(component)
-
-	if type_.Kind() == reflect.Ptr {
-		type_ = type_.Elem()
-	}
-	if value_.Kind() == reflect.Ptr {
-		value_ = value_.Elem()
-	}
-
-	if type_.Kind() == reflect.Struct {
-		for i := 0; i < type_.NumField(); i++ {
-			field := type_.Field(i)
-			value := value_.Field(i)
-			var fieldSchema *openapi3.Schema
-
-			tags, err := structtag.Parse(string(field.Tag))
-			if err != nil {
-				panic(err)
-			}
-
-			tag, err := tags.Get(JSON)
-			if err != nil {
-				panic(err)
-			} else {
-				result := isBasicType(value.Type())
-				if result {
-					fieldSchema = s.getSchemaFromBaseType(value.Interface())
-					schema.Properties[tag.Name] = openapi3.NewSchemaRef("", fieldSchema)
-				}
-
-			}
-
-			if value.Kind() == reflect.Slice {
-				valueElementType := value.Type().Elem()
-				result := isBasicType(valueElementType)
-				if !result {
-					s.handleNestedStructSlice(schema, tag.Name, field.Type.Elem().Name())
-					s.getSchemaFromComponent(value.Interface())
-				}
-			}
-			if value.Kind() == reflect.Struct {
-				v := value.Type().Elem()
-				result := isBasicType(v)
-				if !result {
-					s.handleNestedStruct(schema, tag.Name, value.Interface())
-				}
-			}
-
-			descriptionTag, err := tags.Get(DESCRIPTION)
-			if err == nil {
-				fieldSchema.Description = descriptionTag.String()
-			}
-
-		}
-
-	} else if type_.Kind() == reflect.Slice && type_.Elem().Kind() == reflect.Struct {
-		name := type_.Elem().Name()
-		m := reflect.New(type_.Elem()).Elem().Interface()
-		s.handleStructSlice(name, m)
-	} else {
-		schema = s.getSchemaFromBaseType(component)
-	}
-	return schema
-}
-
-func (s *Swagger) handleStructSlice(name string, model interface{}) {
-	result := s.getSchemaFromComponent(model)
-	openaiSchemaRef := &openapi3.SchemaRef{
-		Value: openapi3.NewAllOfSchema(),
-	}
-	openaiSchemaRef.Value = result
-	openaiSchemaRef.Value.Title = name
-	s.Schemas[name] = openaiSchemaRef
-}
-
-func (s *Swagger) handleNestedStruct(schema *openapi3.Schema, name string, model interface{}) {
-	result := s.getSchemaFromComponent(model)
-	openaiSchemaRef := &openapi3.SchemaRef{
-		Value: openapi3.NewSchema(),
-	}
-	openaiSchemaRef.Value = result
-	openaiSchemaRef.Value.Title = name
-	s.Schemas[name] = openaiSchemaRef
-	ref := fmt.Sprintf("#/components/schemas/%s", name)
-	schemaRef := &openapi3.SchemaRef{Ref: ref}
-	schema.Properties[name] = schemaRef
-}
-
-func (s *Swagger) handleNestedStructSlice(schema *openapi3.Schema, name, fieldName string) {
-	ref := fmt.Sprintf("#/components/schemas/%s", fieldName)
-	openapiSchema := &openapi3.SchemaRef{
-		Value: openapi3.NewArraySchema(),
-	}
-	schemaRef := &openapi3.SchemaRef{Ref: ref}
-	openapiSchema.Value.Items = schemaRef
-	schema.Properties[name] = openapiSchema
 }
 
 func (s *Swagger) getSchemaFromBaseType(field interface{}) *openapi3.Schema {
@@ -295,99 +135,4 @@ func (s *Swagger) getSchemaFromBaseType(field interface{}) *openapi3.Schema {
 
 	}
 	return schema
-}
-
-func (s *Swagger) marshalYAML() ([]byte, error) {
-	res, err := s.OpenAPI.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-	return yaml.JSONToYAML(res)
-}
-
-func (s *Swagger) WriteToYaml() error {
-	err := ensureDirectory(s.OpenAPIYamlFile)
-	if err != nil {
-		return err
-	}
-	file, err := os.OpenFile(s.OpenAPIYamlFile, os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0766)
-	if err != nil {
-		return err
-	}
-	content, err := s.marshalYAML()
-
-	if err != nil {
-		return err
-	}
-
-	if _, err := io.WriteString(file, string(content)); err == nil {
-		return nil
-	}
-	return err
-}
-
-func (s *Swagger) buildPaths() {
-	paths := make(openapi3.Paths)
-	for path, m := range s.Paths {
-		pathItem := &openapi3.PathItem{}
-		for method, r := range m {
-			operation := &openapi3.Operation{
-				Tags:      r.Tags,
-				Summary:   r.Description,
-				Responses: s.getResponses(r.Response),
-			}
-			requestBody := s.getRequestBody(r.Request)
-			switch method {
-			case http.MethodPost:
-				pathItem.Post = operation
-			case http.MethodPut:
-				pathItem.Put = operation
-			case http.MethodDelete:
-				pathItem.Delete = operation
-			}
-			if method != http.MethodGet && requestBody.Value.Content != nil {
-				operation.RequestBody = requestBody
-			}
-			operation.Security = &openapi3.SecurityRequirements{}
-		}
-		paths[path] = pathItem
-	}
-	s.OpenAPI.Paths = paths
-}
-
-func (s *Swagger) getRequestBody(model interface{}) *openapi3.RequestBodyRef {
-	body := &openapi3.RequestBodyRef{
-		Value: openapi3.NewRequestBody(),
-	}
-	if model == nil {
-		return body
-	}
-	name := reflect.TypeOf(model).Elem().Name()
-	if _, ok := s.OpenAPI.Components.Schemas[name]; ok {
-		body.Value.Required = true
-		body.Value.Content = openapi3.Content{
-			"application/json": &openapi3.MediaType{Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.OpenAPI.Components.Schemas[name].Value.Title}},
-		}
-		return body
-	} else {
-		err := fmt.Errorf("not found by name:%v", name)
-		panic(err)
-	}
-}
-
-func (s *Swagger) getResponseRef(response interface{}) *openapi3.ResponseRef {
-	name := reflect.TypeOf(response).Elem().Name()
-	responseRef := &openapi3.ResponseRef{
-		Value: &openapi3.Response{
-			Description: &SUCCESS,
-			Content:     openapi3.Content{"application/json": &openapi3.MediaType{Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.OpenAPI.Components.Schemas[name].Value.Title}}},
-		},
-	}
-	return responseRef
-}
-
-func (s *Swagger) getResponses(response interface{}) openapi3.Responses {
-	responses := openapi3.NewResponses()
-	responses["200"] = s.getResponseRef(response)
-	return responses
 }
