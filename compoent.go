@@ -81,7 +81,7 @@ func (s *Swagger) getSchemaFromComponent(component interface{}) *openapi3.Schema
 				valueElementType := value.Type().Elem()
 				result := isBasicType(valueElementType)
 				if !result {
-					s.handleNestedStructSlice(schema, tag.Name, field.Type.Elem().Name())
+					s.parseNestedArrayOfStructure(schema, tag.Name, field.Type.Elem().Name())
 					s.getSchemaFromComponent(value.Interface())
 				}
 			}
@@ -89,7 +89,7 @@ func (s *Swagger) getSchemaFromComponent(component interface{}) *openapi3.Schema
 				v := value.Type().Elem()
 				result := isBasicType(v)
 				if !result {
-					s.handleNestedStruct(schema, tag.Name, value.Interface())
+					s.parseStructure(schema, tag.Name, value.Interface())
 				}
 			}
 
@@ -103,14 +103,14 @@ func (s *Swagger) getSchemaFromComponent(component interface{}) *openapi3.Schema
 	} else if type_.Kind() == reflect.Slice && type_.Elem().Kind() == reflect.Struct {
 		name := type_.Elem().Name()
 		m := reflect.New(type_.Elem()).Elem().Interface()
-		s.handleStructSlice(name, m)
+		s.parseArrayOfStructure(name, m)
 	} else {
 		schema = s.getSchemaFromBaseType(component)
 	}
 	return schema
 }
 
-func (s *Swagger) handleStructSlice(name string, model interface{}) {
+func (s *Swagger) parseArrayOfStructure(name string, model interface{}) {
 	result := s.getSchemaFromComponent(model)
 	openaiSchemaRef := &openapi3.SchemaRef{
 		Value: openapi3.NewAllOfSchema(),
@@ -120,7 +120,7 @@ func (s *Swagger) handleStructSlice(name string, model interface{}) {
 	s.Schemas[name] = openaiSchemaRef
 }
 
-func (s *Swagger) handleNestedStruct(schema *openapi3.Schema, name string, model interface{}) {
+func (s *Swagger) parseStructure(schema *openapi3.Schema, name string, model interface{}) {
 	result := s.getSchemaFromComponent(model)
 	openaiSchemaRef := &openapi3.SchemaRef{
 		Value: openapi3.NewSchema(),
@@ -132,7 +132,7 @@ func (s *Swagger) handleNestedStruct(schema *openapi3.Schema, name string, model
 	schema.Properties[name] = schemaRef
 }
 
-func (s *Swagger) handleNestedStructSlice(schema *openapi3.Schema, name, fieldName string) {
+func (s *Swagger) parseNestedArrayOfStructure(schema *openapi3.Schema, name, fieldName string) {
 	openapiSchema := &openapi3.SchemaRef{
 		Value: openapi3.NewArraySchema(),
 	}
