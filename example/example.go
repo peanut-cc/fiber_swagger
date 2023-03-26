@@ -30,10 +30,18 @@ func QueryUsers(c *fiber.Ctx) error {
 	return Success(c, users)
 }
 
+func initSwagger() *fiber_swagger.Swagger {
+	swag := fiber_swagger.NewSwagger(
+		"fiber_swagger example",
+		"fiber_swagger generate openapi document", "0.0.1",
+		fiber_swagger.DocPath("./docs/openapi.yaml"),
+	)
+	return swag
+}
+
 func main() {
 	app := fiber.New()
-	swag := fiber_swagger.NewSwagger()
-
+	swag := initSwagger()
 	api := app.Group("api")
 
 	user := api.Group("user")

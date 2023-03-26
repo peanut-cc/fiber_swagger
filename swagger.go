@@ -16,6 +16,7 @@ type Swagger struct {
 	Description     string
 	Version         string
 	License         *openapi3.License
+	Contact         *openapi3.Contact
 	Components      []interface{}
 	OpenAPI         *openapi3.T
 	Schemas         map[string]*openapi3.SchemaRef
@@ -23,26 +24,39 @@ type Swagger struct {
 	OpenAPIYamlFile string
 }
 
-func NewSwagger() *Swagger {
+func NewSwagger(title, description, version string, options ...Option) *Swagger {
+	swagger := &Swagger{
+		Title:       title,
+		Description: description,
+		Version:     version,
+		Components:  nil,
+		Schemas:     make(map[string]*openapi3.SchemaRef),
+		Paths:       make(map[string]map[string]*router.Router),
+	}
+	for _, option := range options {
+		option(swagger)
+	}
+
+	return swagger
+
+}
+
+func (s *Swagger) buildOpenAPI() {
 	openapi := &openapi3.T{
-		Info:       nil,
+		Info: &openapi3.Info{
+			Title:       s.Title,
+			Description: s.Description,
+			Contact:     s.Contact,
+			License:     s.License,
+			Version:     s.Version,
+		},
 		OpenAPI:    "3.0.0",
 		Components: &openapi3.Components{},
 		Tags:       openapi3.Tags{},
 		Paths:      map[string]*openapi3.PathItem{},
 		Security:   openapi3.SecurityRequirements{map[string][]string{"http": {}}},
 	}
-	return &Swagger{
-		Title:           "",
-		Description:     "",
-		Version:         "",
-		License:         nil,
-		Components:      nil,
-		OpenAPI:         openapi,
-		Schemas:         make(map[string]*openapi3.SchemaRef),
-		Paths:           make(map[string]map[string]*router.Router),
-		OpenAPIYamlFile: "./docs/openapi.yaml",
-	}
+	s.OpenAPI = openapi
 }
 
 type HttpRequestResponse struct {
@@ -65,6 +79,7 @@ func (s *Swagger) store(args *HttpRequestResponse) {
 }
 
 func (s *Swagger) Generate(app *fiber.App) {
+	s.buildOpenAPI()
 	for _, route := range app.GetRoutes() {
 		if route.Name == "" {
 			continue
