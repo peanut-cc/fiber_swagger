@@ -38,7 +38,7 @@ func main() {
 
 	user := api.Group("user")
 
-	user.Get("/", QueryUsers).Name("查询用户")
+	user.Post("/query_users", QueryUsers).Name("查询用户")
 	swag.Bind("查询用户", nil, &QueryUsersResult{})
 
 	swag.Generate(app)

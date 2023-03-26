@@ -7,10 +7,13 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/invopop/yaml"
+	"github.com/peanut-cc/fiber_swagger/router"
 	"io"
 	"mime/multipart"
+	"net/http"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 )
@@ -24,6 +27,7 @@ type Swagger struct {
 	Components      []interface{}
 	OpenAPI         *openapi3.T
 	Schemas         map[string]*openapi3.SchemaRef
+	Paths           map[string]map[string]*router.Router
 	OpenAPIYamlFile string
 }
 
@@ -44,6 +48,7 @@ func NewSwagger() *Swagger {
 		Components:      nil,
 		OpenAPI:         openapi,
 		Schemas:         make(map[string]*openapi3.SchemaRef),
+		Paths:           make(map[string]map[string]*router.Router),
 		OpenAPIYamlFile: "./docs/openapi.yaml",
 	}
 }
@@ -68,17 +73,19 @@ func (s *Swagger) store(args *HttpRequestResponse) {
 }
 
 func (s *Swagger) Generate(app *fiber.App) {
-	for _, router := range app.GetRoutes() {
-		if router.Name == "" {
+	for _, route := range app.GetRoutes() {
+		if route.Name == "" {
 			continue
 		}
-		reqRep := s.load(router.Name)
+		reqRep := s.load(route.Name)
 		req := reqRep.Request
 		rep := reqRep.Response
 		s.addComponent(req)
 		s.addComponent(rep)
+		s.addPath(route, req, rep)
 	}
 	s.buildComponents()
+	s.buildPaths()
 	err := s.WriteToYaml()
 	if err != nil {
 		panic(err)
@@ -105,6 +112,20 @@ func (s *Swagger) buildComponents() {
 	s.OpenAPI.Components.Schemas = s.Schemas
 }
 
+func (s *Swagger) addPath(route fiber.Route, request interface{}, response interface{}) {
+	fmt.Printf("path is %v\n", route.Path)
+	fmt.Printf("method is %v\n", route.Method)
+	fmt.Printf("name is %v\n", route.Name)
+	items := strings.Split(route.Path, "/")
+	fmt.Printf("items is %v\n", items[3])
+	tags := []string{items[3]}
+	rt := router.New(route.Path, route.Method, route.Name, tags, router.Request(request), router.Response(response))
+	if s.Paths[route.Path] == nil {
+		s.Paths[route.Path] = make(map[string]*router.Router)
+	}
+	s.Paths[route.Path][route.Method] = rt
+}
+
 func (s *Swagger) getNameAndOpenApiSchemaRefFromComponent(component interface{}) (name string, openApiSchemaRef *openapi3.SchemaRef) {
 	if component == nil {
 		return "", nil
@@ -119,6 +140,7 @@ func (s *Swagger) getNameAndOpenApiSchemaRefFromComponent(component interface{})
 	}
 
 	openApiSchemaRef.Value = s.getSchemaFromComponent(component)
+	openApiSchemaRef.Value.Title = name
 	return name, openApiSchemaRef
 }
 
@@ -165,7 +187,6 @@ func (s *Swagger) getSchemaFromComponent(component interface{}) *openapi3.Schema
 				result := isBasicType(valueElementType)
 				if !result {
 					s.handleNestedStructSlice(schema, tag.Name, field.Type.Elem().Name())
-					//s.getNameAndOpenApiSchemaRefFromComponent(value.Interface())
 					s.getSchemaFromComponent(value.Interface())
 				}
 			}
@@ -303,4 +324,70 @@ func (s *Swagger) WriteToYaml() error {
 		return nil
 	}
 	return err
+}
+
+func (s *Swagger) buildPaths() {
+	paths := make(openapi3.Paths)
+	for path, m := range s.Paths {
+		pathItem := &openapi3.PathItem{}
+		for method, r := range m {
+			operation := &openapi3.Operation{
+				Tags:      r.Tags,
+				Summary:   r.Description,
+				Responses: s.getResponses(r.Response),
+			}
+			requestBody := s.getRequestBody(r.Request)
+			switch method {
+			case http.MethodPost:
+				pathItem.Post = operation
+			case http.MethodPut:
+				pathItem.Put = operation
+			case http.MethodDelete:
+				pathItem.Delete = operation
+			}
+			if method != http.MethodGet && requestBody.Value.Content != nil {
+				operation.RequestBody = requestBody
+			}
+			operation.Security = &openapi3.SecurityRequirements{}
+		}
+		paths[path] = pathItem
+	}
+	s.OpenAPI.Paths = paths
+}
+
+func (s *Swagger) getRequestBody(model interface{}) *openapi3.RequestBodyRef {
+	body := &openapi3.RequestBodyRef{
+		Value: openapi3.NewRequestBody(),
+	}
+	if model == nil {
+		return body
+	}
+	name := reflect.TypeOf(model).Elem().Name()
+	if _, ok := s.OpenAPI.Components.Schemas[name]; ok {
+		body.Value.Required = true
+		body.Value.Content = openapi3.Content{
+			"application/json": &openapi3.MediaType{Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.OpenAPI.Components.Schemas[name].Value.Title}},
+		}
+		return body
+	} else {
+		err := fmt.Errorf("not found by name:%v", name)
+		panic(err)
+	}
+}
+
+func (s *Swagger) getResponseRef(response interface{}) *openapi3.ResponseRef {
+	name := reflect.TypeOf(response).Elem().Name()
+	responseRef := &openapi3.ResponseRef{
+		Value: &openapi3.Response{
+			Description: &SUCCESS,
+			Content:     openapi3.Content{"application/json": &openapi3.MediaType{Schema: &openapi3.SchemaRef{Ref: "#/components/schemas/" + s.OpenAPI.Components.Schemas[name].Value.Title}}},
+		},
+	}
+	return responseRef
+}
+
+func (s *Swagger) getResponses(response interface{}) openapi3.Responses {
+	responses := openapi3.NewResponses()
+	responses["200"] = s.getResponseRef(response)
+	return responses
 }
