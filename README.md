@@ -1,3 +1,15 @@
+# Fiber Swagger
+
+Currently in the development stage
+
+## Introduction
+
+Most of the current golang web framework OpenAPI document generation is implemented by way of comments, which feels too bloated for business code, fiber_swagger automatically generates OpenAPI documents by adding code to the route and tag fields in the request and response data structures
+
+
+## example
+
+```go
 package main
 
 import (
@@ -63,3 +75,4 @@ func main() {
 	swag.Generate(app)
 	//app.Listen(":3000")
 }
+```
