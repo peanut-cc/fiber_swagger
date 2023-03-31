@@ -6,7 +6,7 @@ import (
 	"reflect"
 )
 
-func (s *Swagger) addComponents(components ...interface{}) {
+func (s *Swagger) AddComponents(components ...interface{}) {
 	s.Components = append(s.Components, components...)
 }
 
@@ -95,7 +95,7 @@ func (s *Swagger) getSchemaFromComponent(component interface{}) *openapi3.Schema
 
 			descriptionTag, err := tags.Get(DESCRIPTION)
 			if err == nil {
-				fieldSchema.Description = descriptionTag.String()
+				fieldSchema.Description = descriptionTag.Value()
 			}
 
 		}

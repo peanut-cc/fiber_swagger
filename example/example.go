@@ -15,9 +15,26 @@ func ReturnJson(c *fiber.Ctx, status int, v interface{}) error {
 	return c.JSON(v)
 }
 
+type FailedResponse struct {
+	Err string `json:"err" description:"错误信息"`
+	Msg string `json:"msg" description:"错误描述"`
+}
+
+func Unauthorized(c *fiber.Ctx) error {
+	return c.SendStatus(http.StatusUnauthorized)
+}
+
+func NoContent(c *fiber.Ctx) error {
+	return c.SendStatus(http.StatusNoContent)
+}
+
+func Forbidden(c *fiber.Ctx) error {
+	return c.SendStatus(http.StatusForbidden)
+}
+
 type User struct {
-	Name string `json:"name"`
-	Age  int    `json:"age"`
+	Name string `json:"name" description:"名字"`
+	Age  int    `json:"age" description:"年龄"`
 }
 
 type Users []User
@@ -53,12 +70,20 @@ func initSwagger() *fiber_swagger.Swagger {
 func main() {
 	app := fiber.New()
 	swag := initSwagger()
+
 	api := app.Group("api")
 
 	user := api.Group("user")
 
 	user.Post("/query_users", QueryUsers).Name("查询用户")
-	swag.Bind("查询用户", nil, &QueryUsersResult{})
+	swag.Bind("查询用户", nil, map[int]interface{}{
+		http.StatusOK:                  &QueryUsersResult{},
+		http.StatusInternalServerError: &FailedResponse{},
+		http.StatusNoContent:           nil,
+		http.StatusUnauthorized:        nil,
+		http.StatusForbidden:           nil,
+		http.StatusBadRequest:          &FailedResponse{},
+	})
 
 	swag.Generate(app)
 	//app.Listen(":3000")

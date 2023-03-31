@@ -8,9 +8,9 @@ func Request(request interface{}) Option {
 	}
 }
 
-func Response(response interface{}) Option {
+func Responses(response map[int]interface{}) Option {
 	return func(router *Router) {
-		router.Response = response
+		router.Responses = response
 	}
 }
 

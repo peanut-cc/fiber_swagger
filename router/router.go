@@ -6,7 +6,7 @@ type Router struct {
 	Description string
 	Deprecated  bool
 	Request     interface{}
-	Response    interface{}
+	Responses   map[int]interface{}
 	Header      interface{}
 	Cookie      interface{}
 	Tags        []string
