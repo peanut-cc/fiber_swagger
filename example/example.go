@@ -78,5 +78,4 @@ func main() {
 	})
 
 	swag.Generate(app)
-	//app.Listen(":3000")
 }
