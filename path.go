@@ -1,6 +1,7 @@
 package fiber_swagger
 
 import (
+	"fmt"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/gofiber/fiber/v2"
 	"github.com/peanut-cc/fiber_swagger/router"
@@ -9,10 +10,10 @@ import (
 	"strings"
 )
 
-func (s *Swagger) addPath(route fiber.Route, request interface{}, response interface{}) {
+func (s *Swagger) addPath(route fiber.Route, request interface{}, responses map[int]interface{}) {
 	items := strings.Split(route.Path, "/")
 	tags := []string{items[3]}
-	rt := router.New(route.Path, route.Method, route.Name, tags, router.Request(request), router.Response(response))
+	rt := router.New(route.Path, route.Method, route.Name, tags, router.Request(request), router.Responses(responses))
 	if s.Paths[route.Path] == nil {
 		s.Paths[route.Path] = make(map[string]*router.Router)
 	}
@@ -27,9 +28,10 @@ func (s *Swagger) buildPaths() {
 			operation := &openapi3.Operation{
 				Tags:      r.Tags,
 				Summary:   r.Description,
-				Responses: s.getResponses(r.Response),
+				Responses: s.getResponses(r.Responses),
 			}
 			requestBody := s.getRequestBody(r.Request)
+
 			switch method {
 			case http.MethodPost:
 				pathItem.Post = operation
@@ -76,8 +78,40 @@ func (s *Swagger) getResponseRef(response interface{}) *openapi3.ResponseRef {
 	return responseRef
 }
 
-func (s *Swagger) getResponses(response interface{}) openapi3.Responses {
-	responses := openapi3.NewResponses()
-	responses["200"] = s.getResponseRef(response)
-	return responses
+func (s *Swagger) getResponses(responses map[int]interface{}) openapi3.Responses {
+	openapiResponse := openapi3.NewResponses()
+
+	for httpCode, rt := range responses {
+		switch httpCode {
+		case http.StatusOK:
+			openapiResponse[fmt.Sprintf("%d", http.StatusOK)] = s.getResponseRef(rt)
+		case http.StatusForbidden:
+			openapiResponse[fmt.Sprintf("%d", http.StatusForbidden)] = s.ForbiddenResponse()
+		case http.StatusNoContent:
+			openapiResponse[fmt.Sprintf("%d", http.StatusNoContent)] = s.NoContentResponse()
+		case http.StatusInternalServerError:
+			openapiResponse[fmt.Sprintf("%d", http.StatusInternalServerError)] = s.getResponseRef(rt)
+		case http.StatusBadRequest:
+			openapiResponse[fmt.Sprintf("%d", http.StatusBadRequest)] = s.getResponseRef(rt)
+		}
+	}
+	return openapiResponse
+}
+
+func (s *Swagger) NoContentResponse() *openapi3.ResponseRef {
+	return &openapi3.ResponseRef{
+		Value: &openapi3.Response{
+			Content:     nil,
+			Description: &NOCONTENT,
+		},
+	}
+}
+
+func (s *Swagger) ForbiddenResponse() *openapi3.ResponseRef {
+	return &openapi3.ResponseRef{
+		Value: &openapi3.Response{
+			Content:     nil,
+			Description: &FORBIDDEN,
+		},
+	}
 }

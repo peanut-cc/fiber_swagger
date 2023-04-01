@@ -11,27 +11,29 @@ import (
 )
 
 type Swagger struct {
-	routersMap      sync.Map
-	Title           string
-	Description     string
-	Version         string
-	License         *openapi3.License
-	Contact         *openapi3.Contact
-	Components      []interface{}
-	OpenAPI         *openapi3.T
-	Schemas         map[string]*openapi3.SchemaRef
-	Paths           map[string]map[string]*router.Router
-	OpenAPIYamlFile string
+	routersMap        sync.Map
+	Title             string
+	Description       string
+	Version           string
+	License           *openapi3.License
+	Contact           *openapi3.Contact
+	Components        []interface{}
+	OpenAPI           *openapi3.T
+	Schemas           map[string]*openapi3.SchemaRef
+	Paths             map[string]map[string]*router.Router
+	PathResponseTypes map[string]map[int]interface{}
+	OpenAPIYamlFile   string
 }
 
 func NewSwagger(title, description, version string, options ...Option) *Swagger {
 	swagger := &Swagger{
-		Title:       title,
-		Description: description,
-		Version:     version,
-		Components:  nil,
-		Schemas:     make(map[string]*openapi3.SchemaRef),
-		Paths:       make(map[string]map[string]*router.Router),
+		Title:             title,
+		Description:       description,
+		Version:           version,
+		Components:        nil,
+		Schemas:           make(map[string]*openapi3.SchemaRef),
+		Paths:             make(map[string]map[string]*router.Router),
+		PathResponseTypes: make(map[string]map[int]interface{}),
 	}
 	for _, option := range options {
 		option(swagger)
@@ -60,16 +62,16 @@ func (s *Swagger) buildOpenAPI() {
 }
 
 type HttpRequestResponse struct {
-	URLName  string
-	Request  interface{}
-	Response interface{}
+	URLName   string
+	Request   interface{}
+	Responses map[int]interface{}
 }
 
-func (s *Swagger) Bind(name string, request interface{}, response interface{}) {
+func (s *Swagger) Bind(name string, request interface{}, responses map[int]interface{}) {
 	httpReqRes := &HttpRequestResponse{
-		URLName:  name,
-		Request:  request,
-		Response: response,
+		URLName:   name,
+		Request:   request,
+		Responses: responses,
 	}
 	s.store(httpReqRes)
 }
@@ -86,15 +88,24 @@ func (s *Swagger) Generate(app *fiber.App) {
 		}
 		reqRep := s.load(route.Name)
 		req := reqRep.Request
-		rep := reqRep.Response
-		s.addComponents(req, rep)
-		s.addPath(route, req, rep)
+		s.addResponseComponent(reqRep.Responses)
+
+		s.AddComponents(req)
+		s.addPath(route, req, reqRep.Responses)
 	}
 	s.buildComponents()
 	s.buildPaths()
 	err := s.WriteToYaml()
 	if err != nil {
 		panic(err)
+	}
+}
+
+func (s *Swagger) addResponseComponent(responses map[int]interface{}) {
+	for _, response := range responses {
+		if response != nil {
+			s.AddComponents(response)
+		}
 	}
 }
 

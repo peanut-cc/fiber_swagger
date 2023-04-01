@@ -6,7 +6,7 @@ import (
 	"reflect"
 )
 
-func (s *Swagger) addComponents(components ...interface{}) {
+func (s *Swagger) AddComponents(components ...interface{}) {
 	s.Components = append(s.Components, components...)
 }
 
@@ -32,6 +32,9 @@ func (s *Swagger) getNameAndOpenApiSchemaRefFromComponent(component interface{})
 		name = reflect.TypeOf(component).Elem().Name()
 	} else {
 		name = reflect.TypeOf(component).Name()
+	}
+	if schemaRef, ok := s.Schemas[name]; ok {
+		return name, schemaRef
 	}
 
 	openApiSchemaRef.Value = s.getSchemaFromComponent(component)
@@ -65,16 +68,31 @@ func (s *Swagger) getSchemaFromComponent(component interface{}) *openapi3.Schema
 				panic(err)
 			}
 
+			_, err = tags.Get(EMBED)
+			if err == nil {
+				embedSchema := s.getSchemaFromComponent(value.Interface())
+				for key, property := range embedSchema.Properties {
+					schema.Properties[key] = property
+				}
+				schema.Required = append(schema.Required, embedSchema.Required...)
+			}
+
 			tag, err := tags.Get(JSON)
 			if err != nil {
-				panic(err)
+				continue
 			} else {
 				result := isBasicType(value.Type())
 				if result {
 					fieldSchema = s.getSchemaFromBaseType(value.Interface())
-					schema.Properties[tag.Name] = openapi3.NewSchemaRef("", fieldSchema)
+				} else {
+					fieldSchema = s.getSchemaFromComponent(value.Interface())
 				}
+				schema.Properties[tag.Name] = openapi3.NewSchemaRef("", fieldSchema)
+			}
 
+			validateTag, err := tags.Get(VALIDATE)
+			if err == nil && validateTag.Name == "required" {
+				schema.Required = append(schema.Required, tag.Name)
 			}
 
 			if value.Kind() == reflect.Slice {
@@ -86,7 +104,13 @@ func (s *Swagger) getSchemaFromComponent(component interface{}) *openapi3.Schema
 				}
 			}
 			if value.Kind() == reflect.Struct {
-				v := value.Type().Elem()
+				var v reflect.Type
+				if value.Kind() == reflect.Ptr {
+					v = value.Type().Elem()
+				} else {
+					v = value.Type()
+				}
+
 				result := isBasicType(v)
 				if !result {
 					s.parseStructure(schema, tag.Name, value.Interface())
@@ -95,15 +119,21 @@ func (s *Swagger) getSchemaFromComponent(component interface{}) *openapi3.Schema
 
 			descriptionTag, err := tags.Get(DESCRIPTION)
 			if err == nil {
-				fieldSchema.Description = descriptionTag.String()
+				fieldSchema.Description = descriptionTag.Name
 			}
-
 		}
 
-	} else if type_.Kind() == reflect.Slice && type_.Elem().Kind() == reflect.Struct {
-		name := type_.Elem().Name()
-		m := reflect.New(type_.Elem()).Elem().Interface()
-		s.parseArrayOfStructure(name, m)
+	} else if type_.Kind() == reflect.Slice {
+		if type_.Elem().Kind() == reflect.Struct {
+			name := type_.Elem().Name()
+			m := reflect.New(type_.Elem()).Elem().Interface()
+			s.parseArrayOfStructure(name, m)
+		}
+		if isBasicType(type_.Elem()) {
+			schema = openapi3.NewArraySchema()
+			filedValue := s.getSchemaFromComponent(reflect.New(type_.Elem()).Elem().Interface())
+			schema.Items = &openapi3.SchemaRef{Value: filedValue}
+		}
 	} else {
 		schema = s.getSchemaFromBaseType(component)
 	}
