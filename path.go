@@ -7,12 +7,10 @@ import (
 	"github.com/peanut-cc/fiber_swagger/router"
 	"net/http"
 	"reflect"
-	"strings"
 )
 
 func (s *Swagger) addPath(route fiber.Route, request interface{}, responses map[int]interface{}) {
-	items := strings.Split(route.Path, "/")
-	tags := []string{items[3]}
+	tags := []string{route.Path}
 	rt := router.New(route.Path, route.Method, route.Name, tags, router.Request(request), router.Responses(responses))
 	if s.Paths[route.Path] == nil {
 		s.Paths[route.Path] = make(map[string]*router.Router)
@@ -31,8 +29,11 @@ func (s *Swagger) buildPaths() {
 				Responses: s.getResponses(r.Responses),
 			}
 			requestBody := s.getRequestBody(r.Request)
-
 			switch method {
+			case http.MethodGet:
+				parameters := s.parseParameters(r.Request, r.Header, r.Cookie)
+				pathItem.Get = operation
+				operation.Parameters = parameters
 			case http.MethodPost:
 				pathItem.Post = operation
 			case http.MethodPut:

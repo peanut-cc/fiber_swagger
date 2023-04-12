@@ -9,10 +9,18 @@ var (
 )
 
 const (
+	QUERY       = "query"
+	JSON        = "json"
+	FORM        = "form"
+	URI         = "uri"
+	HEADER      = "header"
+	COOKIE      = "cookie"
 	DEFAULT     = "default"
 	VALIDATE    = "validate"
 	DESCRIPTION = "description"
 	EMBED       = "embed"
 	EXAMPLE     = "example"
-	JSON        = "json"
+	EXCLUDE     = "exclude"
+	TITLE       = "title"
+	ENUM        = "enum"
 )

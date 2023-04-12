@@ -75,24 +75,35 @@ func (s *Swagger) getSchemaFromComponent(component interface{}) *openapi3.Schema
 					schema.Properties[key] = property
 				}
 				schema.Required = append(schema.Required, embedSchema.Required...)
-			}
-
-			tag, err := tags.Get(JSON)
-			if err != nil {
 				continue
-			} else {
+			}
+			var tagName string
+			tag, err := tags.Get(JSON)
+			if err == nil {
+				tagName = tag.Name
 				result := isBasicType(value.Type())
 				if result {
 					fieldSchema = s.getSchemaFromBaseType(value.Interface())
 				} else {
 					fieldSchema = s.getSchemaFromComponent(value.Interface())
 				}
-				schema.Properties[tag.Name] = openapi3.NewSchemaRef("", fieldSchema)
+				schema.Properties[tagName] = openapi3.NewSchemaRef("", fieldSchema)
+			}
+			query, err := tags.Get(QUERY)
+			if err == nil {
+				tagName = query.Name
+				result := isBasicType(value.Type())
+				if result {
+					fieldSchema = s.getSchemaFromBaseType(value.Interface())
+				} else {
+					fieldSchema = s.getSchemaFromComponent(value.Interface())
+				}
+				schema.Properties[tagName] = openapi3.NewSchemaRef("", fieldSchema)
 			}
 
 			validateTag, err := tags.Get(VALIDATE)
 			if err == nil && validateTag.Name == "required" {
-				schema.Required = append(schema.Required, tag.Name)
+				schema.Required = append(schema.Required, tagName)
 			}
 
 			if value.Kind() == reflect.Slice {
